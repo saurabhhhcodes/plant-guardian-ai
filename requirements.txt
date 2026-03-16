@@ -25,3 +25,4 @@ uvicorn>=0.27.0
 
 transformers>=4.38.0
 torch>=2.2.0
+google-adk @ git+https://github.com/saurabhhhcodes/adk-python.git
