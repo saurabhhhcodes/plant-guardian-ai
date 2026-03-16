@@ -132,12 +132,40 @@ This application is designed to work with Streamlit Cloud. Users can select thei
 4. Set the main file path to `streamlit_app.py`
 5. Deploy and share with others
 
-## 🧪 Testing
+## 🧪 Reproducible Testing
 
-To test the application locally:
+To verify the installation and core functionality, follow these steps:
+
+### 1. Environment Setup
+```bash
+# Create and activate a virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 2. Configuration
+Create a `.env` file in the root directory:
+```env
+# Required for Gemini/ADK functionality
+GOOGLE_API_KEY=your_gemini_api_key_here
+USER_EMAIL=your_email@gmail.com
+USER_PASSWORD=your_app_password  # For email notifications
+```
+
+### 3. Execution
+Run the application:
 ```bash
 streamlit run streamlit_app.py
 ```
+
+### 4. Verification Steps
+1. **Login:** Register a new user and login.
+2. **Analysis:** Upload a plant image (e.g., `test_image.jpg`).
+3. **Agent Verification:** Verify that the "AI Diagnosis" appears with a 7-Day recovery roadmap.
+4. **Chat:** Send a message like "How much water does this plant need?" and verify the AI response.
 
 ## 📝 License
 
