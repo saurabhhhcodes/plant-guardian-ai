@@ -1,61 +1,93 @@
-/* General Styles */
+/* Premium PlantGuardian AI Styles */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
 body {
-    font-family: 'Roboto', sans-serif;
-    background-color: #f0f2f6;
+    font-family: 'Outfit', sans-serif;
+    color: #ffffff;
+    background-color: #0e1117;
+}
+
+/* Glassmorphism containers */
+.stApp {
+    background: radial-gradient(circle at top right, #1e293b, #0e1117);
+}
+
+.st-emotion-cache-1v3fvcr {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    padding: 2.5rem;
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
 }
 
 /* Sidebar Styles */
-.css-1d391kg {
-    background-color: #ffffff;
-    border-right: 1px solid #e6e6e6;
-}
-
-/* Main Content Styles */
-.css-1v3fvcr {
-    background-color: #ffffff;
-    padding: 2rem;
-    border-radius: 10px;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+[data-testid="stSidebar"] {
+    background-color: #161b22;
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* Button Styles */
 .stButton>button {
-    background-color: #4CAF50;
+    background: linear-gradient(135deg, #4CAF50 0%, #2E7D32 100%);
     color: white;
-    border-radius: 5px;
-    padding: 10px 20px;
+    border-radius: 12px;
+    padding: 0.6rem 1.5rem;
     border: none;
-    cursor: pointer;
-    font-size: 16px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(76, 175, 80, 0.3);
+    width: 100%;
 }
 
 .stButton>button:hover {
-    background-color: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(76, 175, 80, 0.4);
+    background: linear-gradient(135deg, #66BB6A 0%, #388E3C 100%);
 }
 
-/* Input Styles */
-.stTextInput>div>div>input {
-    border-radius: 5px;
-    border: 1px solid #ccc;
-    padding: 10px;
+/* Metric Cards */
+[data-testid="stMetricValue"] {
+    color: #4CAF50 !important;
+    font-weight: 700;
 }
 
-/* Tab Styles */
+/* Tabs */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 24px;
+    background-color: transparent;
+    gap: 10px;
 }
 
 .stTabs [data-baseweb="tab"] {
-    height: 48px;
-    white-space: pre-wrap;
-    background-color: #f0f2f6;
-    border-radius: 4px 4px 0px 0px;
-    gap: 1px;
-    padding-top: 10px;
-    padding-bottom: 10px;
+    border-radius: 10px 10px 0 0;
+    background-color: rgba(255, 255, 255, 0.05);
+    color: #cccccc !important;
+    border: none;
+    font-weight: 500;
 }
 
 .stTabs [aria-selected="true"] {
-    background-color: #4CAF50;
-    color: white;
+    background-color: rgba(76, 175, 80, 0.1) !important;
+    color: #4CAF50 !important;
+    border-bottom: 2px solid #4CAF50 !important;
+}
+
+/* Info boxes */
+.stAlert {
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.05) !important;
+}
+
+/* Paragraphs and secondary text */
+p, li, span, label, .stMarkdown, .stText, .stChatMessage {
+    color: #ffffff !important;
+    line-height: 1.6;
+    letter-spacing: 0.015em;
+}
+
+h1, h2, h3 {
+    color: #ffffff !important;
+    font-weight: 600 !important;
+    letter-spacing: -0.02em;
 }

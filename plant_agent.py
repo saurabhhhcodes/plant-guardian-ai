@@ -50,213 +50,192 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import AIMessage
 from langchain_core.messages import HumanMessage, SystemMessage
 
+# ADK imports
+import sys
+if "/home/saurabh/adk-python/src" not in sys.path:
+    sys.path.append("/home/saurabh/adk-python/src")
+
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions.in_memory_session_service import InMemorySessionService
+
 # Local imports
 from plant_analysis import PlantImageAnalyzer
+from weather_service import WeatherService
 
 class PlantCareAgent:
     """Plant Care Agent that works with multiple LLM providers."""
     
-    def __init__(self, api_key: str = None, provider: str = "openai"):
-        """Initialize the PlantCareAgent with the specified provider.
+    def __init__(self, api_key: str = None):
+        """Initialize the PlantCareAgent.
         
         Args:
-            api_key: API key for the selected provider
-            provider: LLM provider ("openai", "anthropic", "together")
+            api_key: API key for the Gemini provider.
         """
         self.api_key = api_key
-        self.provider = provider
-        self.llm = self._initialize_llm()
+        self.provider = "gemini"
         self.analyzer = PlantImageAnalyzer()
+        self.adk_agent = self._init_adk_agent()
+        self.runner = Runner(
+            app_name="PlantGuardianApp",
+            agent=self.adk_agent,
+            session_service=InMemorySessionService()
+        )
     
-    def _initialize_llm(self):
-        # Final attempt with gemini-pro and pinned dependency
-        # Local Hugging Face Transformers (no API key, open source, in-process)
-        if self.provider == "local-hf":
-            if pipeline is not None and AutoModelForCausalLM is not None and AutoTokenizer is not None:
-                # Use a small, fast open source model for best compatibility (TinyLlama)
-                model_id = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-                try:
-                    pipe = pipeline(
-                        "text-generation",
-                        model=model_id,
-                        tokenizer=model_id,
-                        max_new_tokens=256,
-                        do_sample=True,
-                        temperature=0.7,
-                        trust_remote_code=True
-                    )
-                except Exception as e:
-                    raise RuntimeError(f"Failed to load local Hugging Face model: {e}\nTry increasing memory or using a smaller model.")
-                # Wrap the pipeline in a simple callable for compatibility
-                class LocalHFPipelineWrapper:
-                    def invoke(self, prompt):
-                        result = pipe(prompt, return_full_text=False)
-                        return type('Obj', (), {"content": result[0]["generated_text"] if result and isinstance(result, list) else str(result)})()
-                return LocalHFPipelineWrapper()
-            else:
-                raise ImportError("transformers or torch is not installed. Please install them to use local open source LLMs.")
-        """Initialize the language model based on the provider."""
-        if self.provider == "openai":
-            return ChatOpenAI(
-                model="gpt-4o",  # latest stable OpenAI model
-                api_key=self.api_key,
-                temperature=0.7
-            )
-        elif self.provider == "anthropic":
-            return ChatAnthropic(
-                model="claude-3-opus-20240229",  # latest Claude 3 Opus
-                anthropic_api_key=self.api_key,
-                temperature=0.7
-            )
-        elif self.provider == "together":
-            if TogetherLLM is not None:
-                return TogetherLLM(
-                    model="meta-llama/Llama-3-70b-chat-hf",  # Llama 3 70B
-                    together_api_key=self.api_key,
-                    temperature=0.7
-                )
-            else:
-                raise ImportError("TogetherLLM is not available in this version of langchain_together. Please update your requirements or code.")
-        elif self.provider == "ollama":
-            if Ollama is not None:
-                # Check if Ollama server is running
-                import requests
-                try:
-                    resp = requests.get("http://localhost:11434")
-                    if resp.status_code != 200:
-                        raise Exception()
-                except Exception:
-                    raise RuntimeError(
-                        "Ollama server is not running on localhost:11434. "
-                        "Please start Ollama with 'ollama serve' on your local machine. "
-                        "Ollama is not supported on most cloud platforms."
-                    )
-                # Use a vision model for image analysis, default to a chat model otherwise
-                # This allows the app to handle both image and text-based queries with Ollama
-                if hasattr(self, '_is_vision_request') and self._is_vision_request:
-                    return Ollama(model="llava", temperature=0.7)  # LLaVA is a vision model
-                return Ollama(model="llama3", temperature=0.7)
-            else:
-                raise ImportError("Ollama is not available. Please install langchain_community and run an Ollama server.")
-        elif self.provider == "cohere":
-            if ChatCohere is not None:
-                return ChatCohere(
-                    model="command-r-plus",  # latest Cohere command model
-                    cohere_api_key=self.api_key,
-                    temperature=0.7
-                )
-            else:
-                raise ImportError("ChatCohere is not available. Please install langchain_cohere.")
-        elif self.provider == "gemini":
-            if ChatGoogleGenerativeAI is not None:
-               return ChatGoogleGenerativeAI(
-                   model="gemini-pro",
-                   google_api_key=self.api_key,
-                   temperature=0.7
-               )
-            else:
-                raise ImportError("ChatGoogleGenerativeAI is not available. Please install langchain_google_genai.")
-        elif self.provider == "mistral":
-            if ChatMistralAI is not None:
-                return ChatMistralAI(
-                    model="mistral-large-latest",  # latest Mistral model
-                    mistral_api_key=self.api_key,
-                    temperature=0.7
-                )
-            else:
-                raise ImportError("ChatMistralAI is not available. Please install langchain_mistralai.")
-        elif self.provider == "perplexity":
-            if ChatPerplexity is not None:
-                return ChatPerplexity(
-                    model="pplx-70b-online",  # latest Perplexity model
-                    perplexity_api_key=self.api_key,
-                    temperature=0.7
-                )
-            else:
-                raise ImportError("ChatPerplexity is not available. Please install langchain_perplexity.")
-        elif self.provider == "huggingface":
-            if HuggingFaceHub is not None:
-                return HuggingFaceHub(
-                    repo_id="HuggingFaceH4/zephyr-7b-beta",  # Zephyr 7B Beta is a strong open model
-                    huggingfacehub_api_token=self.api_key
-                )
-            else:
-                raise ImportError("HuggingFaceHub is not available. Please install langchain_huggingface.")
-        else:
-            # Default to OpenAI if no provider specified
-            return ChatOpenAI(
-                model="gpt-4o",
-                api_key=self.api_key,
-                temperature=0.7
-            )
-    
-    def analyze_image(self, image_data: str) -> Dict[str, Any]:
-        """Analyze a plant image and return health assessment.
+    def _init_adk_agent(self) -> Agent:
+        """Initialize the ADK Agent with tools and instructions."""
+        return Agent(
+            name="PlantGuardian",
+            model="gemini-2.5-flash",
+            instruction="""
+            You are PlantGuardian, a premium multimodal AI plant doctor.
+            Your goal is to provide expert diagnosis and recovery plans for plants.
+            
+            When a user uploads an image, you must:
+            1. Identify the plant species.
+            2. Analyze health using vision and provided context (location/weather).
+            3. Generate a recovery infographic roadmap and a video storyboard.
+            
+            Always respond in a professional, encouraging, and highly detailed manner.
+            If you need weather data, use the weather tool if a location is provided.
+            """,
+            description="Expert plant care assistant with multimodal vision and storytelling capabilities."
+        )
+    async def analyze_image(self, image_data: str, location: str = None, weather: Dict = None, is_farm: bool = False) -> Dict[str, Any]:
+        """
+        Analyze a plant image using ADK Runner and multimodal reasoning.
         
         Args:
             image_data: Base64 encoded image string
+            location: Optional location name
+            weather: Optional weather data dictionary
             
         Returns:
             Dict containing analysis results
         """
         try:
-            # Decode base64 image
-            if isinstance(image_data, str):
-                if image_data.startswith('data:image'):
-                    # Handle data URL format
-                    img_str = image_data.split(',')[1]
-                    img_bytes = base64.b64decode(img_str)
-                else:
-                    # Assume it's a base64 string
-                    img_bytes = base64.b64decode(image_data)
-            else:
-                img_bytes = image_data
-                
+            # Prepare context for ADK
+            weather_data = weather
+            if not weather_data and location:
+                weather_data = WeatherService.get_weather(location)
+            
+            # Identify plant species and diagnose with multimodal reasoning
+            # We use the specialized _diagnose_multimodal helper for now 
+            # to maintain the complex JSON structure needed by the UI
+            diagnosis_data = self._diagnose_multimodal(image_data, location, weather_data, is_farm)
+            species = diagnosis_data.get('species', 'Unknown Plant')
+
+            # Numerical stats (keep OpenCV for technical USP)
+            img_bytes = base64.b64decode(image_data.split(',')[1] if ',' in image_data else image_data)
             img_array = np.frombuffer(img_bytes, dtype=np.uint8)
             img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
             
-            if img is None:
-                return {
-                    'status': 'error',
-                    'message': 'Failed to decode image. Please try again with a different image.'
-                }
-            
-            # Detect if a plant is present
-            if not self.analyzer.detect_plant(img):
-                return {
-                    'status': 'error',
-                    'message': 'No plant detected in the image. Please upload a clear photo of a plant.'
-                }
-
-            # Identify plant species
-            species = self._identify_plant_species(image_data)
-
-            # Analyze the image
             health_analysis = self.analyzer.analyze_plant_health(img)
             disease_analysis = self.analyzer.detect_diseases(img)
             
-            # Generate a summary of the analysis
             summary = self._generate_analysis_summary(health_analysis, disease_analysis)
+            summary['diagnosis'] = diagnosis_data.get('diagnosis', 'No diagnosis available')
+            summary['weather_context'] = diagnosis_data.get('weather_context', 'No weather context')
             
-            # Generate care recommendations using LLM
-            recommendations = self._generate_care_recommendations(health_analysis, disease_analysis, species)
+            recovery_story = diagnosis_data.get('recovery_story', {})
             
             return {
                 'status': 'success',
                 'health_analysis': health_analysis,
                 'disease_analysis': disease_analysis,
                 'summary': summary,
-                'recommendations': recommendations,
+                'recovery_story': recovery_story,
                 'species': species,
-                'message': 'Image analyzed successfully.'
+                'message': 'Advanced ADK-powered diagnosis complete.'
             }
         except Exception as e:
             import traceback
             return {
                 'status': 'error',
-                'message': f'Error analyzing image: {str(e)}\n{traceback.format_exc()}'
+                'message': f'Error in ADK diagnosis: {str(e)}'
             }
-    
+
+    def _diagnose_multimodal(self, image_data: str, location: str = None, weather: Dict = None, is_farm: bool = False) -> Dict[str, Any]:
+        """Perform multimodal diagnosis using Gemini 1.5 Pro with weather and location context."""
+        try:
+            weather_str = ""
+            if weather:
+                weather_str = f"""
+                Current Weather in {location}:
+                - Temperature: {weather.get('temp_C')}C
+                - Humidity: {weather.get('humidity')}%
+                - Condition: {weather.get('weatherDesc')}
+                - Rainfall: {weather.get('precipMM')}mm
+                """
+            
+            # Fetch regional soil data
+            soil_context = WeatherService.get_soil_insights(location) if location else "General loam context."
+            
+            farm_context = ""
+            if is_farm:
+                farm_context = """
+                AGRICULTURAL FARM MODE ACTIVE:
+                - Analyze for large-scale crop issues (Monoculture pests, irrigation uniformity).
+                - Consider mineral runoff and regional soil salinity.
+                - Suggest tractor-accessible or drone-based remediation if applicable.
+                - Focus on yield impact.
+                """
+
+            prompt = f"""
+            Identify the plant species and diagnose its health from this image.
+            
+            {weather_str}
+            Location: {location if location else "Unspecified"}
+            
+            Contextual Requirements:
+            1. Consider typical regional soil characteristics for {location if location else "the user's region"} (e.g., pH, texture, mineral content).
+            2. Analyze how the local climate and soil conditions interact with this specific plant species.
+            3. Provide a expert-level diagnosis based on the visual symptoms in the image AND the provided environmental context.
+
+            Provide the output in the following JSON format:
+            {{
+                "species": "Scientific and Common Name",
+                "diagnosis": "Detailed breakdown of health issues, including soil/climate factors",
+                "recovery_story": {{
+                    "infographic": {{
+                        "title": "Plant Recovery Roadmap",
+                        "steps": [
+                            {{"day": 1, "action": "Immediate Action", "icon": "emoji"}},
+                            {{"day": 3, "action": "Intermediate Care", "icon": "emoji"}},
+                            {{"day": 7, "action": "Long-term Maintenance", "icon": "emoji"}}
+                        ]
+                    }}
+                }}
+            }}
+            
+            Be professional, highly specific, and actionable. Avoid generic advice.
+            """
+
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            
+            # Prepare image part
+            img_part = {
+                "mime_type": "image/jpeg",
+                "data": base64.b64decode(image_data.split(',')[1] if ',' in image_data else image_data)
+            }
+            
+            response = model.generate_content(
+                [prompt, img_part],
+                generation_config={"response_mime_type": "application/json"}
+            )
+            
+            return json.loads(response.text)
+        except Exception as e:
+            print(f"Error in multimodal diagnosis: {e}")
+            return {
+                "species": "Unknown Plant",
+                "diagnosis": "Failed to generate diagnosis.",
+                "weather_context": "No context available.",
+                "recovery_story": {}
+            }
+
     def _generate_analysis_summary(self, health_analysis: Dict, disease_analysis: Dict) -> Dict:
         """Generate a summary of the plant health analysis.
         
@@ -311,18 +290,12 @@ class PlantCareAgent:
             # Create a prompt for the LLM
             prompt = "Identify the plant species in this image. Provide the common and scientific name."
             
-            # Get response from the LLM
-            response = self.llm.invoke(
-                [
-                    HumanMessage(
-                        content=[
-                            {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": f"data:image/jpeg;base64,{image_data}"}
-                        ]
-                    )
-                ]
-            )
-            return response.content.strip()
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            img_part = {"mime_type": "image/jpeg", "data": base64.b64decode(image_data.split(',')[1] if ',' in image_data else image_data)}
+            response = model.generate_content([prompt, img_part])
+            return response.text.strip()
         except Exception:
             return "Could not identify plant species."
         finally:
@@ -357,9 +330,11 @@ class PlantCareAgent:
         """
         
         try:
-            # Get recommendations from the LLM
-            response = self.llm.invoke(prompt)
-            recommendations = response.content.strip().split('\n')
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(prompt)
+            recommendations = response.text.strip().split('\n')
             # Filter out empty lines and return as list
             return [rec.strip() for rec in recommendations if rec.strip()]
         except Exception as e:
@@ -406,43 +381,53 @@ class PlantCareAgent:
         from datetime import datetime
         return datetime.now().isoformat()
     
-    def chat(self, message: str, chat_history: list = None) -> str:
-        """Process a chat message and return a response, always forcing UTF-8 encoding for output."""
+    async def chat(self, message: str, chat_history: list = None) -> str:
+        """Process a chat message using ADK Runner."""
         try:
-            messages = []
-            messages.append(SystemMessage(content="""
-            You are a friendly and knowledgeable plant care assistant. Your name is Flora.
-            Your goal is to help users with all their plant-related questions in a warm and encouraging tone.
-            When responding, consider the user's potential emotional connection to their plants.
-            Provide clear, actionable advice, and always be positive and supportive.
-            If you don't know the answer, it's okay to say so, but offer to find out or suggest where the user can look for more information.
+            # In a real ADK app, we'd use sessions, but for Streamlit 
+            # we can use the invoke method for stateless-like turns 
+            # or pass the history as events.
+            from google.genai import types
             
-            Key areas of expertise:
-            - Plant identification and fun facts.
-            - Detailed care instructions (watering, light, soil, fertilizer).
-            - Diagnosing and treating pests and diseases.
-            - Pruning and propagation techniques.
-            - General tips for happy, healthy plants.
-            """))
-            if chat_history:
-                for msg in chat_history:
-                    if msg["role"] == "user":
-                        messages.append(HumanMessage(content=msg["content"]))
-                    elif msg["role"] == "assistant":
-                        messages.append(AIMessage(content=msg["content"])) # Use AIMessage for assistant
-            messages.append(HumanMessage(content=message))
-            response = self.llm.invoke(messages)
-            # Force UTF-8 encoding/decoding at every step
-            if hasattr(response, 'content'):
-                content = response.content
-            else:
-                content = response
-            if isinstance(content, bytes):
-                return content.decode('utf-8', errors='replace')
-            # If it's a string, re-encode and decode to force UTF-8
-            return str(content).encode('utf-8', errors='replace').decode('utf-8', errors='replace')
+            app_name = self.runner.app_name
+            user_id = "default_user"
+            session_id = "chat_session"
+
+            # Ensure session exists for ADK
+            session = await self.runner.session_service.get_session(
+                app_name=app_name, 
+                user_id=user_id, 
+                session_id=session_id
+            )
+            if not session:
+                await self.runner.session_service.create_session(
+                    app_name=app_name,
+                    user_id=user_id,
+                    session_id=session_id
+                )
+
+            response = self.runner.run_async(
+                user_id=user_id,
+                session_id=session_id,
+                new_message=types.Content(role="user", parts=[types.Part(text=message)])
+            )
+            
+            # Extract text from response events
+            full_text = ""
+            async for event in response:
+                if hasattr(event, "content") and event.content:
+                    if isinstance(event.content, str):
+                        full_text += event.content
+                    elif hasattr(event.content, "parts"):
+                        for part in event.content.parts:
+                            if hasattr(part, "text"):
+                                full_text += part.text
+                elif hasattr(event, "text") and event.text:
+                    full_text += event.text
+            
+            return full_text if full_text else "I am processing your request..."
         except Exception as e:
-            return f"I encountered an error: {str(e)}. Please try again with a different query."
+            return f"ADK Error: {str(e)}"
     
     def get_care_instructions(self, plant_type: str) -> str:
         """Get care instructions for a specific plant type.
@@ -467,9 +452,11 @@ class PlantCareAgent:
         """
         
         try:
-            # Get response from the LLM
-            response = self.llm.invoke(prompt)
-            return response.content
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(prompt)
+            return response.text
         except Exception as e:
             return f"Error generating care instructions: {str(e)}"
 

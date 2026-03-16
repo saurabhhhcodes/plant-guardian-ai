@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import io
+import asyncio
 import os
 import locale
 from pathlib import Path
@@ -62,136 +63,85 @@ def initialize_session_state():
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ""
     if 'provider' not in st.session_state:
-        st.session_state.provider = "openai"
+        st.session_state.provider = "gemini"
     if 'messages' not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "Hello! I'm your Plant Care Assistant. How can I help you with your plants today?"}
+            {"role": "assistant", "content": "Hello! I'm Flora, your PlantGuardian AI expert. How can I help you save your plants today?"}
         ]
     if 'gemini_search_count' not in st.session_state:
         st.session_state.gemini_search_count = 0
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
+    if 'location' not in st.session_state:
+        st.session_state.location = ""
+    if 'is_farm' not in st.session_state:
+        st.session_state.is_farm = False
+
+try:
+    from weather_service import WeatherService
+except ImportError:
+    WeatherService = None
+
+try:
+    from story_generator import StoryGenerator
+except ImportError:
+    StoryGenerator = None
 
 def display_sidebar():
     """Display the sidebar with LLM provider selection and API key input."""
     with st.sidebar:
-        st.title("🌱 Plant Care Assistant")
-        # Provider selection
-        st.subheader("LLM Provider")
-        provider_display = st.selectbox(
-            "Select Provider",
-            [
-                "openai",
-                "anthropic",
-                "together",
-                "cohere",
-                "gemini",
-                "mistral",
-                "perplexity",
-                "huggingface",
-                "ollama (open source LLMs)",
-                "local-hf (TinyLlama, open source, no API key)",
-            ],
-            index=4,  # Set Gemini as the default
-            help="Select the LLM provider to use for analysis. 'local-hf' runs a small open source model (TinyLlama) directly on your machine, no API key required."
-        )
-        # Normalize provider value for backend
-        if provider_display.startswith("ollama"):
-            provider = "ollama"
-        elif provider_display.startswith("local-hf"):
-            provider = "local-hf"
-        else:
-            provider = provider_display
-        st.session_state.provider = provider
+        st.title("🛡️ PlantGuardian AI")
+        st.info("Your Context-Aware Plant Doctor")
+        
+        # Location input for weather context
+        st.subheader("📍 Environmental Context")
+        
+        # Auto-fetch location if empty
+        if not st.session_state.location and WeatherService:
+            with st.spinner("Detecting your location..."):
+                auto_loc = WeatherService.get_location_from_ip()
+                if auto_loc:
+                    st.session_state.location = auto_loc
+                    st.success(f"Detected: {auto_loc}")
+        
+        location = st.text_input("City/Region", value=st.session_state.location)
+        st.session_state.location = location
+        
+        st.session_state.is_farm = st.toggle("🚜 Farm Mode (AGRICULTURAL)", value=st.session_state.get('is_farm', False))
 
-        # API key input (completely hide for open source providers)
-        if provider in ["ollama", "local-hf"]:
-            api_key = ""
-            if provider == "ollama":
-                st.info("Ollama does not require an API key if running locally.")
-            elif provider == "local-hf":
-                st.info("'local-hf' runs TinyLlama (open source) directly on your machine. No API key needed, but requires sufficient RAM and CPU/GPU.")
-                # Check for transformers/torch at runtime and show a user-friendly error if missing
-                try:
-                    import transformers, torch
-                except ImportError:
-                    st.error("❌ Required packages 'transformers' and 'torch' are not installed. Please install them with:\n\n    pip install transformers torch\n\nThen restart the app.")
-                    return
-        else:
-            provider_label = {
-                "openai": "OpenAI",
-                "anthropic": "Anthropic",
-                "together": "Together.ai",
-                "cohere": "Cohere",
-                "gemini": "Google Gemini",
-                "mistral": "Mistral AI",
-                "perplexity": "Perplexity AI",
-                "huggingface": "Hugging Face Hub",
-            }.get(provider, provider.title())
-            st.subheader(f"API Key for {provider_label}")
-            if provider == "gemini":
-                st.info("You have 20 free Gemini searches with the trial key.")
-                st.metric("Remaining Searches", 20 - st.session_state.gemini_search_count)
-                
-                gemini_key_option = st.radio(
-                    "Choose Gemini API Key Option",
-                    ("Use Trial Key (20 Searches)", "Use My Own API Key"),
-                    index=0
-                )
-                
-                if gemini_key_option == "Use My Own API Key":
-                    api_key = st.text_input(
-                        "Enter your Google Gemini API key",
-                        type="password",
-                        help="Enter your Google Gemini API key",
-                        value=st.session_state.api_key
-                    )
-                else:
-                    api_key = os.getenv("GEMINI_API_KEY")
-            else:
-                api_key = st.text_input(
-                    f"Enter your {provider_label} API key",
-                    type="password",
-                    help=f"Enter your {provider_label} API key",
-                    value=st.session_state.api_key
-                )
+        api_key = os.getenv("GEMINI_API_KEY")
         st.session_state.api_key = api_key
 
-        # Auto-initialize for open source providers
-        # Combined initialization logic
-        button_disabled = not bool(api_key) and provider not in ["ollama", "local-hf"]
-        if st.button("Initialize Agent", disabled=button_disabled):
+        if not api_key:
+            st.error("GEMINI_API_KEY is not set. Please contact support.")
+            return
+
+        if not st.session_state.agent_initialized:
             try:
-                with st.spinner("Initializing Plant Care Agent..."):
+                with st.spinner("Initializing PlantGuardian Agent..."):
                     st.session_state.plant_agent = PlantCareAgent(
-                        api_key=api_key,
-                        provider=provider
+                        api_key=api_key
                     )
                     st.session_state.agent_initialized = True
-                    st.success("✅ Plant Care Agent initialized successfully!")
             except Exception as e:
-                st.error(f"Error initializing Plant Care Agent: {str(e)}")
+                st.error(f"Error initializing Agent: {str(e)}")
                 st.session_state.agent_initialized = False
 
         # Status indicators
         st.subheader("Status")
         if st.session_state.agent_initialized:
-            st.success("✅ Plant Care Agent is ready")
+            st.success("✅ PlantGuardian is ready")
         else:
-            st.error("❌ Plant Care Agent not initialized")
-            # Only show API key warning for providers that require it
-            st.info("Please enter your API key and click 'Initialize Agent'")
+            st.error("❌ Agent not initialized")
 
         # App information
         st.subheader("About")
         st.info("""
-        This app uses real LLMs to analyze plant health and provide care recommendations.
-
-        **Features:**
-        - 📸 Upload plant photos for analysis
-        - 💬 Chat with the plant care assistant
-        - 🌿 Get personalized care tips
-        - 🔍 Identify plant health issues
+        **PlantGuardian AI** is a next-gen agentic assistant:
+        - 📸 **Vision**: Real-time health analysis.
+        - 🌍 **Context**: Weather & Location aware.
+        - ✍️ **Creative Story**: Generates recovery roadmaps.
+        - 💬 **Live Chat**: Multimodal communication.
         """)
         if st.session_state.logged_in:
             if st.button("Logout"):
@@ -200,7 +150,7 @@ def display_sidebar():
 
 def display_upload_section():
     """Display the image upload and analysis section."""
-    st.header("🌿 Plant Analysis")
+    st.header("📸 Multimodal Diagnosis")
     
     # File uploader for images
     uploaded_file = st.file_uploader(
@@ -211,140 +161,114 @@ def display_upload_section():
 
     # Video uploader
     uploaded_video = st.file_uploader(
-        "Or upload a video of your plant (analyzes first frame)",
+      "Or upload a video of your plant",
         type=["mp4", "mov", "avi"],
         key="video_uploader"
     )
 
-    # Camera input (Streamlit native)
-    camera_image = st.camera_input("Or take a photo with your camera")
+    # Camera input
+    camera_image = st.camera_input("Or take a photo live")
 
-    # Prefer video > camera > image
     image_to_use = None
-    video_to_use = None
-    if uploaded_video is not None:
-        # Save video to a temp file
-        import tempfile
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_vid:
-            tmp_vid.write(uploaded_video.read())
-            video_path = tmp_vid.name
-        st.session_state.uploaded_video_path = video_path
-        st.video(video_path)
-        video_to_use = video_path
-    elif camera_image is not None:
-        try:
-            image = Image.open(camera_image)
-            st.image(image.decode('utf-8'), caption="Camera Plant Image", width='stretch')
-            st.session_state.uploaded_image = image
-            image_to_use = image
-        except Exception as e:
-            st.error(f"Error loading camera image: {str(e)}")
-            return
+    if camera_image is not None:
+        image_to_use = camera_image
     elif uploaded_file is not None:
-        try:
-            image = Image.open(uploaded_file)
-            st.image(image, caption="Uploaded Plant Image", width='stretch')
-            st.session_state.uploaded_image = image
-            image_to_use = image
-        except Exception as e:
-            st.error(f"Error loading image: {str(e)}")
-            return
+        image_to_use = uploaded_file
+
+    # Preferred location
+    location = st.session_state.get('location', 'Lucknow')
 
     # Analysis button
-    analysis_disabled = not st.session_state.agent_initialized or (image_to_use is None and video_to_use is None)
-    if st.session_state.gemini_search_count >= 20:
-        analysis_disabled = True
-        st.warning("You have reached your free trial limit. Please upgrade to a premium plan to continue using the analysis feature.")
-
-    if st.button("Analyze Plant", disabled=analysis_disabled):
-        if st.session_state.provider == "gemini":
-            st.session_state.gemini_search_count += 1
-        if video_to_use is not None:
-            analyze_plant_video(video_to_use)
-        else:
-            analyze_plant_image()
-
-def analyze_plant_video(video_path):
-    """Analyze the first frame of the uploaded plant video."""
-    if not video_path:
-        st.warning("Please upload a video first")
-        return
-    with st.spinner("Analyzing your plant video..."):
-        try:
-            if st.session_state.agent_initialized and st.session_state.plant_agent:
-                analysis = st.session_state.plant_agent.analyzer.analyze_video(video_path)
-                if analysis.get('status') == 'error':
-                    st.error(analysis.get('message', 'Unknown error'))
-                else:
-                    st.success("Video analysis complete! 🎉 (First frame)")
-                    st.json(analysis)
-            else:
-                st.error("Plant Care Agent is not initialized")
-        except Exception as e:
-            st.error(f"Error during video analysis: {str(e)}")
-
-def analyze_plant_image():
-    """Analyze the uploaded plant image."""
-    if 'uploaded_image' not in st.session_state:
-        st.warning("Please upload an image first")
-        return
+    analysis_disabled = not st.session_state.agent_initialized or image_to_use is None
     
-    with st.spinner("Analyzing your plant..."):
+    if st.button("🚀 Start Diagnosis", disabled=analysis_disabled):
+        analyze_plant_image(image_to_use, location, st.session_state.is_farm)
+
+def analyze_plant_image(image_input, location, is_farm=False):
+    """Analyze the plant image with location, weather, and farm context."""
+    with st.spinner(f"Fetching weather for {location}..."):
+        weather_data = None
+        if WeatherService:
+            weather_data = WeatherService.get_weather(location)
+        
+    with st.spinner("PlantGuardian is analyzing your plant..."):
         try:
             # Convert image to base64
+            image = Image.open(image_input)
             buffered = io.BytesIO()
-            st.session_state.uploaded_image.save(buffered, format="JPEG")
+            image.save(buffered, format="JPEG")
             img_str = base64.b64encode(buffered.getvalue()).decode()
             
-            # Get analysis from the agent
+            # Show the image
+            st.image(image, caption="Analyzed Plant Image", width="stretch")
+
             if st.session_state.agent_initialized and st.session_state.plant_agent:
-                analysis = st.session_state.plant_agent.analyze_image(img_str)
-                display_analysis_results(analysis)
+                analysis = asyncio.run(st.session_state.plant_agent.analyze_image(img_str, location, weather_data, is_farm))
+                display_analysis_results(analysis, weather_data, is_farm)
             else:
-                st.error("Plant Care Agent is not initialized")
+                st.error("PlantGuardian Agent is not initialized")
                 
         except Exception as e:
             st.error(f"Error during analysis: {str(e)}")
 
-def display_analysis_results(analysis):
-    """Display the analysis results in a user-friendly format."""
-    try:
-        if analysis.get('status') == 'success':
-            st.success("Analysis complete! 🎉")
-            
-            # Display species
-            if 'species' in analysis:
-                st.subheader("🌿 Plant Species")
-                st.write(analysis['species'])
+def display_analysis_results(analysis, weather_data=None, is_farm=False):
+    """Display the enhanced analysis results."""
+    if analysis.get('status') == 'success':
+        st.balloons()
+        st.success("Diagnosis Complete! 🎉")
+        
+        # Plant Info
+        st.subheader(f"🌿 {analysis.get('species', 'Plant identified')}")
+        
+        summary = analysis.get('summary', {})
+        
+        # Weather Context
+        if weather_data:
+            with st.expander("🌤️ Local Weather Context", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                col1.metric("Temperature", f"{weather_data.get('temp_C')}°C")
+                col2.metric("Humidity", f"{weather_data.get('humidity')}%")
+                col3.metric("Condition", weather_data.get('weatherDesc'))
+                st.write(f"**AI Insight:** {summary.get('weather_context')}")
+                if is_farm:
+                    st.warning("🚜 **Farm Insights Active**: Analyzing soil drainage and regional crop risks.")
 
-            # Display health metrics
-            health = analysis.get('health_analysis', {})
-            st.subheader("🌱 Plant Health Summary")
-            # Create columns for metrics
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Health Score", f"{health.get('healthy_percentage', 0):.1f}%")
-            with col2:
-                st.metric("Yellowing", f"{health.get('yellow_percentage', 0):.1f}%")
-            with col3:
-                st.metric("Browning", f"{health.get('brown_percentage', 0):.1f}%")
-            # Display care recommendations
-            if 'recommendations' in analysis:
-                st.subheader("💡 Care Recommendations")
-                for rec in analysis['recommendations']:
-                    rec_text = rec.strip()
-                    if rec_text.startswith(('-', '*', '•', '1.', '2.', '3.', '4.', '5.')):
-                        rec_text = rec_text[1:].strip()
-                    # Force UTF-8 for display
-                    st.info(f"• {rec_text.encode('utf-8', errors='replace').decode('utf-8', errors='replace')}")
-        else:
-            st.error(f"Analysis failed: {analysis.get('message', 'Unknown error')}")
-    except Exception as e:
-        st.error(f"Unicode error displaying analysis: {str(e)}")
+        # Diagnosis Breakdown
+        st.subheader("🩺 Diagnosis")
+        st.info(summary.get('diagnosis'))
+
+        # Metrics
+        health = analysis.get('health_analysis', {})
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Health Score", f"{health.get('healthy_percentage', 0):.1f}%")
+        col2.metric("Yellowing", f"{health.get('yellow_percentage', 0):.1f}%")
+        col3.metric("Browning", f"{health.get('brown_percentage', 0):.1f}%")
+
+        # Recovery Story (Multimodal Storyteller)
+        recovery = analysis.get('recovery_story', {})
+        if recovery:
+            st.divider()
+            st.subheader("🗺️ Plant Recovery Roadmap (Infographic)")
+            infographic = recovery.get('infographic', {})
+            
+            # CSS-styled infographic steps
+            cols = st.columns(len(infographic.get('steps', [])))
+            for i, step in enumerate(infographic.get('steps', [])):
+                with cols[i]:
+                    st.markdown(f"""
+                    <div style="background: #1e1e1e; padding: 15px; border-radius: 10px; border-left: 5px solid #4CAF50; text-align: center;">
+                        <h2 style="margin: 0;">{step.get('icon', '🌱')}</h2>
+                        <h4 style="margin: 5px 0;">Day {step.get('day')}</h4>
+                        <p style="font-size: 0.9em;">{step.get('action')}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+    else:
+        st.error(f"Analysis failed: {analysis.get('message', 'Unknown error')}")
 
 def display_chat_interface():
     """Display the chat interface for plant care questions."""
-    st.header("💬 Chat with Plant Expert")
+    st.header("💬 Chat with Flora")
     
     # Display chat messages
     for message in st.session_state.messages:
@@ -362,16 +286,7 @@ def display_chat_interface():
 
     # Chat input
     chat_disabled = not st.session_state.agent_initialized
-    prompt = st.chat_input("Ask me anything about plant care...", disabled=chat_disabled)
-    if prompt is not None:
-        try:
-            # Force UTF-8 for input
-            if isinstance(prompt, bytes):
-                prompt = prompt.decode('utf-8', errors='replace')
-            else:
-                prompt = str(prompt).encode('utf-8', errors='replace').decode('utf-8', errors='replace')
-        except Exception:
-            pass
+    if prompt := st.chat_input("Ask Flora about your plants...", disabled=chat_disabled):
         # Add user message to chat history
         st.session_state.messages.append({"role": "user", "content": prompt})
 
@@ -384,10 +299,10 @@ def display_chat_interface():
             with st.spinner("Thinking..."):
                 try:
                     if st.session_state.agent_initialized and st.session_state.plant_agent:
-                        response = st.session_state.plant_agent.chat(
+                        response = asyncio.run(st.session_state.plant_agent.chat(
                             message=prompt,
                             chat_history=st.session_state.messages[:-1]
-                        )
+                        ))
                         # Always force UTF-8 for output
                         if isinstance(response, bytes):
                             response = response.decode('utf-8', errors='replace')
@@ -396,7 +311,7 @@ def display_chat_interface():
                         st.markdown(response)
                         st.session_state.messages.append({"role": "assistant", "content": response})
                     else:
-                        st.error("Plant Care Agent is not initialized")
+                        st.error("PlantGuardian Agent is not initialized")
                 except Exception as e:
                     error_msg = f"Sorry, I encountered an error: {str(e)}"
                     st.error(error_msg)
@@ -405,8 +320,8 @@ def display_chat_interface():
 def main():
     # Set page config
     st.set_page_config(
-        page_title="🌱 Smart Plant Care Assistant",
-        page_icon="🌱",
+        page_title="🛡️ PlantGuardian AI",
+        page_icon="🛡️",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -424,13 +339,16 @@ def main():
         display_sidebar()
         
         # Main content
-        st.title("🌱 Smart Plant Care Assistant")
-        st.markdown("### 🌿 AI-Powered Plant Health Analysis with Real LLMs")
+        st.title("🛡️ PlantGuardian AI")
+        st.markdown("### 🌿 Next-Gen Multimodal Plant Health Assistant")
         
-        st.info("🎉 You have 20 free trials with Gemini! Select Gemini from the sidebar to get started.")
+        st.info("🚀 Powered by Gemini 2.5 Flash - Context-Aware Diagnostics.")
+        
+        if st.session_state.get('is_guest'):
+            st.warning("⚠️ Running in Guest Mode. Limited features might apply.")
 
         # Create tabs for different features
-        tab1, tab2, tab3 = st.tabs(["📸 Analyze Plant", "💬 Chat with Expert", "📦 Packages"])
+        tab1, tab2, tab3 = st.tabs(["📸 AI Diagnosis", "💬 Chat with Flora", "📦 Premium Plans"])
         
         with tab1:
             display_upload_section()
@@ -442,7 +360,7 @@ def main():
             display_packages()
 
 def display_login_page():
-    st.title("Login / Register")
+    st.title("🛡️ PlantGuardian Login")
     
     choice = st.selectbox("Choose an action", ["Login", "Register"])
     
@@ -467,9 +385,16 @@ def display_login_page():
                 st.rerun()
             else:
                 st.error("Invalid username or password.")
+                
+    st.divider()
+    if st.button("🚀 Bypass to Guest App"):
+        st.session_state.logged_in = True
+        st.session_state.username = "Guest"
+        st.session_state.is_guest = True
+        st.rerun()
 
 def display_packages():
-    st.header("Subscription Packages")
+    st.header("Premium Subscription Packages")
     
     for package in PACKAGES:
         with st.container():
