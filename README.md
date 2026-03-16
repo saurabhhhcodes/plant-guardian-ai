@@ -1,4 +1,4 @@
-# 🌱 Smart Plant Care Assistant
+# 🌱 PlantGuardian AI
 
 A Streamlit-based application that helps you take care of your plants using AI-powered image analysis and chat assistance with real LLMs.
 
@@ -49,7 +49,7 @@ Our plant analysis system provides confidence scores for all predictions:
 1. Clone the repository:
    ```bash
    git clone https://github.com/saurabhhhcodes/plant-guardian-ai.git
-   cd smart-plant-care-assistant
+   cd plant-guardian-ai
    ```
 
 2. Install the required Python packages:
@@ -96,7 +96,7 @@ Our plant analysis system provides confidence scores for all predictions:
 
 ## 🌐 Try the App Online
 
-**[Smart Plant Care Assistant Streamlit App](https://smart-plant-care-langchain.streamlit.app/)**
+**[PlantGuardian AI Streamlit App](https://plantguardianai.streamlit.app/)**
 
 ---
 

@@ -36,18 +36,18 @@ def send_email(to_address, subject, body):
 
 def send_welcome_email(email, username):
     """Sends a welcome email to a new user."""
-    subject = "Welcome to the Smart Plant Care Assistant!"
+    subject = "Welcome to the PlantGuardian AI!"
     body = f"""
     Hi {username},
 
-    Thank you for registering for the Smart Plant Care Assistant! We're excited to have you.
+    Thank you for registering for the PlantGuardian AI! We're excited to have you.
 
     You can now analyze your plants, chat with our expert assistant, and explore our premium features. You have 20 free trials to get you started with our Gemini-powered analysis.
 
     Happy planting!
 
     Best,
-    The Smart Plant Care Assistant Team
+    The PlantGuardian AI Team
     """
     send_email(email, subject, body)
 
@@ -62,6 +62,6 @@ def send_advertisement_email(email, package_name, price):
     Upgrade now to unlock advanced features and take your plant care to the next level.
 
     Best,
-    The Smart Plant Care Assistant Team
+    The PlantGuardian AI Team
     """
     send_email(email, subject, body)
